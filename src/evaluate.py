@@ -26,6 +26,8 @@ test batch** (some batches have no Toluene). Averaging over absent classes would
 meaningless zeros. Wrong predictions of an absent class still lower the scores of the
 classes that are present.
 """
+import inspect
+
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -99,13 +101,35 @@ def _batch_range(batches):
     return f"{min(batches)}-{max(batches)}" if len(batches) > 1 else f"{batches[0]}"
 
 
-def _fit_predict(estimator, variant, X_tr, y_tr, X_te, lda_components=5, random_state=42, pca_variance=0.95):
+def _fit_predict(estimator, variant, X_tr, y_tr, X_te, lda_components=5, random_state=42, pca_variance=0.95,
+                 groups_tr=None):
     pipe = make_pipeline(estimator, variant, pca_variance=pca_variance,
                          lda_components=lda_components, random_state=random_state)
     if variant == "LDA":  # LDA can give at most (n_classes_in_train - 1) axes
         pipe.set_params(dr__n_components=min(lda_components, len(np.unique(y_tr)) - 1))
-    pipe.fit(X_tr, y_tr)
+    fit_params = {}
+    if groups_tr is not None and "groups" in inspect.signature(pipe.named_steps["clf"].fit).parameters:
+        fit_params["clf__groups"] = groups_tr    # e.g. stacking needs the batch of every training sample
+    pipe.fit(X_tr, y_tr, **fit_params)
     return pipe.predict(X_te)
+
+
+def _evaluate_split(estimator, X, y, batch, train_batches, test_batch, protocol, variant, name,
+                    return_confusion=False, **pipeline_kwargs):
+    """Fit on ``train_batches`` and score on ``test_batch``; returns ``(row_dict, confusion_or_None)``."""
+    tr = np.isin(batch, train_batches)
+    te = batch == test_batch
+    # a time-aware split must never train on the future
+    assert max(train_batches) < test_batch and not (tr & te).any()
+    y_pred = _fit_predict(estimator, variant, X[tr], y[tr], X[te], groups_tr=batch[tr], **pipeline_kwargs)
+    row = {
+        "model": name, "variant": variant, "protocol": protocol,
+        "train_batches": _batch_range(train_batches), "test_batch": test_batch,
+        "n_train": int(tr.sum()), "n_test": int(te.sum()),
+        **compute_metrics(y[te], y_pred),
+    }
+    cm = confusion_matrix(y[te], y_pred, labels=GAS_LABELS) if return_confusion else None
+    return row, cm
 
 
 def evaluate_protocol(estimator, X, y, batch, protocol="P1", variant="raw", name=None,
@@ -120,19 +144,11 @@ def evaluate_protocol(estimator, X, y, batch, protocol="P1", variant="raw", name
     name = name or type(estimator).__name__
     rows, cms = [], {}
     for train_batches, test_batch in protocol_splits(protocol):
-        tr = np.isin(batch, train_batches)
-        te = batch == test_batch
-        # a time-aware split must never train on the future
-        assert max(train_batches) < test_batch and not (tr & te).any()
-        y_pred = _fit_predict(estimator, variant, X[tr], y[tr], X[te], **pipeline_kwargs)
-        rows.append({
-            "model": name, "variant": variant, "protocol": protocol,
-            "train_batches": _batch_range(train_batches), "test_batch": test_batch,
-            "n_train": int(tr.sum()), "n_test": int(te.sum()),
-            **compute_metrics(y[te], y_pred),
-        })
+        row, cm = _evaluate_split(estimator, X, y, batch, train_batches, test_batch, protocol, variant, name,
+                                  return_confusion, **pipeline_kwargs)
+        rows.append(row)
         if return_confusion:
-            cms[test_batch] = confusion_matrix(y[te], y_pred, labels=GAS_LABELS)
+            cms[test_batch] = cm
     df = pd.DataFrame(rows)
     return (df, cms) if return_confusion else df
 
@@ -174,15 +190,25 @@ def summarize(results):
             .apply(agg, include_groups=False).reset_index())
 
 
-def evaluate_grid(models, X, y, batch, variants=VARIANTS, protocols=("P1", "P2", "P3"), n_jobs=-1, **pipeline_kwargs):
+def evaluate_grid(models, X, y, batch, variants=VARIANTS, protocols=("P1", "P2", "P3"), n_jobs=-1,
+                  split_level=False, verbose=0, **pipeline_kwargs):
     """Evaluate ``{name: estimator}`` x variants x protocols, in parallel.
 
     Results are identical to calling :func:`evaluate_protocol` in a loop (every task is
-    deterministic); parallelism only saves time. Returns one concatenated per-batch DataFrame.
+    deterministic); parallelism only saves time. ``split_level=True`` parallelises over
+    individual train/test splits instead of whole protocols, which is much faster when one
+    model is very slow (e.g. stacking with Gradient Boosting). Returns one per-batch DataFrame.
     """
-    tasks = [(name, est, v, p) for name, est in models.items() for v in variants for p in protocols]
-    parts = Parallel(n_jobs=n_jobs)(
+    combos = [(name, est, v, p) for name, est in models.items() for v in variants for p in protocols]
+    if split_level:
+        tasks = [(name, est, v, p, tb, te) for name, est, v, p in combos for tb, te in protocol_splits(p)]
+        out = Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(_evaluate_split)(est, X, y, batch, tb, te, p, v, name, False, **pipeline_kwargs)
+            for name, est, v, p, tb, te in tasks
+        )
+        return pd.DataFrame([row for row, _ in out])
+    parts = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(evaluate_protocol)(est, X, y, batch, p, v, name=name, **pipeline_kwargs)
-        for name, est, v, p in tasks
+        for name, est, v, p in combos
     )
     return pd.concat(parts, ignore_index=True)

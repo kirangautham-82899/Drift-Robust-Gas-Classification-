@@ -147,3 +147,5 @@ def test_parallel_grid_equals_sequential_loop(data):
     loop = [evaluate_protocol(est, X, y, b, "P1", v, name=n) for n, est in models.items() for v in ("raw", "PCA")]
     import pandas as pd
     pd.testing.assert_frame_equal(grid.reset_index(drop=True), pd.concat(loop, ignore_index=True))
+    split = evaluate_grid(models, X, y, b, variants=("raw", "PCA"), protocols=("P1",), n_jobs=2, split_level=True)
+    pd.testing.assert_frame_equal(split.reset_index(drop=True), pd.concat(loop, ignore_index=True))

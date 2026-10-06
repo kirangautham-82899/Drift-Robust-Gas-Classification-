@@ -1,0 +1,4 @@
+held-out batch,experts trained on,Toluene samples in that training set,SVM,kNN,Random Forest,Naive Bayes
+1,2830,5,0.537,0.847,0.593,0.456
+2,2031,74,0.973,0.979,0.953,0.749
+3,1689,79,0.885,0.864,0.929,0.813
