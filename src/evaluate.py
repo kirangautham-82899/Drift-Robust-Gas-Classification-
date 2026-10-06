@@ -98,8 +98,9 @@ def _batch_range(batches):
     return f"{min(batches)}-{max(batches)}" if len(batches) > 1 else f"{batches[0]}"
 
 
-def _fit_predict(estimator, variant, X_tr, y_tr, X_te, lda_components=5, random_state=42):
-    pipe = make_pipeline(estimator, variant, lda_components=lda_components, random_state=random_state)
+def _fit_predict(estimator, variant, X_tr, y_tr, X_te, lda_components=5, random_state=42, pca_variance=0.95):
+    pipe = make_pipeline(estimator, variant, pca_variance=pca_variance,
+                         lda_components=lda_components, random_state=random_state)
     if variant == "LDA":  # LDA can give at most (n_classes_in_train - 1) axes
         pipe.set_params(dr__n_components=min(lda_components, len(np.unique(y_tr)) - 1))
     pipe.fit(X_tr, y_tr)

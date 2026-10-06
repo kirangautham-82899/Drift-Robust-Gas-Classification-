@@ -98,6 +98,16 @@ def test_pca_keeps_95_percent_variance(data):
     assert dr.explained_variance_ratio_.sum() >= 0.95 and dr.n_components_ < 128
 
 
+def test_pca_variance_option_is_forwarded():
+    rng = np.random.RandomState(0)
+    X = rng.normal(size=(200, 20)) * np.linspace(5, 0.1, 20)   # decaying variances
+    y = rng.randint(1, 4, 200)
+    n = {v: make_pipeline(KNeighborsClassifier(), "PCA", pca_variance=v).fit(X, y).named_steps["dr"].n_components_
+         for v in (0.90, 0.99)}
+    assert n[0.90] < n[0.99]
+    _fit_predict(KNeighborsClassifier(), "PCA", X, y, X, pca_variance=0.90)  # must be accepted
+
+
 # ---------------- regression against the earlier quick check ----------------
 @needs_data
 def test_default_svm_and_knn_reproduce_quick_check(data):
