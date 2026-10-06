@@ -28,6 +28,7 @@ classes that are present.
 """
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from sklearn.base import clone
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
@@ -171,3 +172,17 @@ def summarize(results):
         })
     return (results.groupby(["model", "variant", "protocol"], sort=False)
             .apply(agg, include_groups=False).reset_index())
+
+
+def evaluate_grid(models, X, y, batch, variants=VARIANTS, protocols=("P1", "P2", "P3"), n_jobs=-1, **pipeline_kwargs):
+    """Evaluate ``{name: estimator}`` x variants x protocols, in parallel.
+
+    Results are identical to calling :func:`evaluate_protocol` in a loop (every task is
+    deterministic); parallelism only saves time. Returns one concatenated per-batch DataFrame.
+    """
+    tasks = [(name, est, v, p) for name, est in models.items() for v in variants for p in protocols]
+    parts = Parallel(n_jobs=n_jobs)(
+        delayed(evaluate_protocol)(est, X, y, batch, p, v, name=name, **pipeline_kwargs)
+        for name, est, v, p in tasks
+    )
+    return pd.concat(parts, ignore_index=True)

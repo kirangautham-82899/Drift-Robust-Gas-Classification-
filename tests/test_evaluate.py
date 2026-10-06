@@ -6,7 +6,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 
 from src.data import RAW_DIR, load_all
-from src.evaluate import (compute_metrics, evaluate_protocol, make_pipeline, protocol_splits,
+from src.evaluate import (compute_metrics, evaluate_grid, evaluate_protocol, make_pipeline, protocol_splits,
                           random_split_baseline, summarize, _fit_predict)
 
 needs_data = pytest.mark.skipif(not (RAW_DIR / "batch1.dat").exists(), reason="raw data not downloaded")
@@ -137,3 +137,13 @@ def test_summarize_weights(data):
     assert s["n_test_batches"] == 7
     assert s["mean_accuracy"] == pytest.approx(df["accuracy"].mean())
     assert s["weighted_accuracy"] == pytest.approx((df["accuracy"] * df["n_test"]).sum() / df["n_test"].sum())
+
+
+@needs_data
+def test_parallel_grid_equals_sequential_loop(data):
+    X, y, b = data
+    models = {"kNN": KNeighborsClassifier(), "SVM": SVC()}
+    grid = evaluate_grid(models, X, y, b, variants=("raw", "PCA"), protocols=("P1",), n_jobs=2)
+    loop = [evaluate_protocol(est, X, y, b, "P1", v, name=n) for n, est in models.items() for v in ("raw", "PCA")]
+    import pandas as pd
+    pd.testing.assert_frame_equal(grid.reset_index(drop=True), pd.concat(loop, ignore_index=True))
