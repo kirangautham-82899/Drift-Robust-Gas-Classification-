@@ -4,7 +4,7 @@
 Kiran Gautham (CB.AI.P2DSC26013)
 
 > **Status: first review done; final phase in progress.** The first-review results below use scikit-learn **default settings**.
-> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) and interpretability (section 3d) are done; a redesigned stacker and significance tests are next.
+> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) and interpretability (section 3d) and significance tests (section 3e) are done; a redesigned stacker and the final report are next.
 
 ## 1. Problem
 
@@ -25,7 +25,7 @@ drift-aware classical-ML pipeline for gas classification, evaluated honestly: *t
   **P3** rolling: train on batches 1..k-1, test on batch k. Every test batch is scored separately.
 * **Metrics:** accuracy, macro-precision, macro-recall, **macro-F1** (main metric; averaged over the gases present in the test batch), confusion matrices.
 * **Leakage safety:** scaler/PCA/LDA are cloned and fitted on training batches only; stacking uses leave-one-batch-out folds; the random-split
-  results exist only as a clearly labelled "misleading" reference. 52 automated tests check these properties.
+  results exist only as a clearly labelled "misleading" reference. 61 automated tests check these properties.
 
 ## 3. Preliminary results (untuned)
 
@@ -87,8 +87,16 @@ but lowered SVM and every LDA pipeline); none beat the default SVM (69.0%). Deta
 Feature scores and any selection use batches 1-3 only; permutation importance and ablations are descriptive analyses of a fitted model. **The most informative sensors are also the ones that drift most**:
 in the training batches S01, S02, S09 and S10 separate the gases best but drift most (the sensors that stood out in the exploratory analysis), and used alone they are the worst later on (macro-F1 0.32-0.35 vs 0.55-0.59 for S08, S04, S07).
 Removing S01 lifts the SVM from 0.690 to 0.723 on the fixed training set (and kNN from 0.609 to 0.648), but not under rolling retraining. Choosing features by training discriminability **hurts** (SVM 0.584 with the discriminative half),
-while the pre-declared drift-stable half (which contains none of S01, S02, S09, S10) raises Random Forest from 0.518 to 0.639 (better than all 50 random halves), is neutral for the SVM (0.683) and inconsistent for kNN.
+while the pre-declared drift-stable half (which contains none of S01, S02, S09, S10) raises Random Forest from 0.518 to 0.639 (better than all 50 random halves; but only *suggestive* once batch-to-batch uncertainty is included, section 3e), is neutral for the SVM (0.683) and inconsistent for kNN.
 Features are highly redundant: no single feature type or sensor group matches the full set. Details: `notebooks/09_interpretability.ipynb`.
+
+### 3e. Significance tests and confidence intervals (final phase, step 12)
+
+All 97 stored predictions reproduce the earlier per-batch results exactly. Intervals come from a paired **two-level bootstrap** (test batches *and* the samples inside them are resampled, because samples within a batch are near-identical twins),
+with a pre-declared verdict rule (clear / suggestive / inconclusive). **The best default model, SVM with scaling only, scores 0.690 macro-F1 with a 95% interval of 0.567-0.821**; the intervals of the other models overlap heavily
+(kNN 0.528-0.697, Random Forest 0.364-0.672, no-skill floor 0.041-0.069). Of 37 declared comparisons, 24 are clear, 12 suggestive and 1 inconclusive: SVM beats all six other models (7 of 7 batches against five of them), but a Friedman/Nemenyi rank test only separates
+it from AdaBoost, Naive Bayes and Decision Tree; windows, CORAL and the leakage-safe default stacker clearly hurt; selecting features by training discriminability clearly hurts; tuning, per-batch standardisation, recency weighting and the Random Forest stable-half gain are only suggestive.
+**After Holm correction no single comparison is significant at 5%** (smallest adjusted p = 0.145), which is unavoidable with only 7 or 9 test batches. Details: `notebooks/10_significance.ipynb`.
 
 ### Limitations
 
@@ -100,11 +108,11 @@ Rankings above are descriptive - choosing a final model from test-batch scores w
 
 ```
 data/raw/        batch1.dat ... batch10.dat (git-ignored; see data/raw/README.md)
-src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, interpret.py, plotting.py
-notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability
-scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py (heavy runs that cache their results)
-tests/           52 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability)
-results/         CSV tables and results/figures/ (36 figures)
+src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, interpret.py, predictions.py, stats.py, plotting.py
+notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability  10_significance
+scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py, run_predictions.py (heavy runs that cache their results)
+tests/           61 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability, statistics)
+results/         CSV tables and results/figures/ (39 figures)
 docs/            first_review_slides.md (slide-by-slide outline for the review)
 ```
 
@@ -119,12 +127,11 @@ cd notebooks && jupyter nbconvert --to notebook --execute --inplace 01_eda_drift
 
 Run notebooks from inside `notebooks/` (they locate the project root from there). Notebooks 04-06 reuse the cached CSVs in `results/` and finish in seconds;
 to recompute from scratch set `RERUN = True` in the notebook, or run the scripts. Approximate full-recompute times on 16 CPU cores:
-notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_interpretability.py` about 5 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
+notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_interpretability.py` about 5 min, `scripts/run_predictions.py` about 13 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
 
 ## 6. Roadmap (final phase)
 
-Gas-aware drift compensation (the simple methods of section 3c did not help); a redesigned stacker (forward-chaining folds); a Toluene-aware evaluation with per-gas reporting; bootstrap confidence intervals,
-Friedman/Nemenyi and McNemar tests; final report.
+Gas-aware drift compensation (the simple methods of section 3c did not help); a redesigned stacker (forward-chaining folds); a Toluene-aware evaluation with per-gas reporting; final report.
 
 ## References
 
