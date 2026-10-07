@@ -3,8 +3,8 @@
 **24DS601 - Machine Learning, M.Tech Data Science, Amrita Vishwa Vidyapeetham, Coimbatore**
 Kiran Gautham (CB.AI.P2DSC26013)
 
-> **Status: first review (preliminary results).** All models use scikit-learn **default settings**; nothing is tuned yet.
-> Hyperparameter tuning, drift-mitigation methods, significance tests and the final stacking design are planned for the final phase.
+> **Status: first review done; final phase in progress.** The first-review results below use scikit-learn **default settings**.
+> Hyperparameter tuning is done (section 3b); drift-mitigation methods, interpretability, a redesigned stacker and significance tests are next.
 
 ## 1. Problem
 
@@ -25,7 +25,7 @@ drift-aware classical-ML pipeline for gas classification, evaluated honestly: *t
   **P3** rolling: train on batches 1..k-1, test on batch k. Every test batch is scored separately.
 * **Metrics:** accuracy, macro-precision, macro-recall, **macro-F1** (main metric; averaged over the gases present in the test batch), confusion matrices.
 * **Leakage safety:** scaler/PCA/LDA are cloned and fitted on training batches only; stacking uses leave-one-batch-out folds; the random-split
-  results exist only as a clearly labelled "misleading" reference. 22 automated tests check these properties.
+  results exist only as a clearly labelled "misleading" reference. 30 automated tests check these properties.
 
 ## 3. Preliminary results (untuned)
 
@@ -66,9 +66,16 @@ Other protocols: rolling **P3** best is SVM (scaling only) with 82.4% accuracy /
 
 ![Degradation over time](results/figures/22_degradation_top_models.png)
 
+### 3b. Hyperparameter tuning (final phase, step 8)
+
+Settings were chosen on batches 1-3 only, with forward-chaining validation (train B1 / validate B2, train B1+B2 / validate B3), then tested on the untouched batches 4-10.
+Every grid contains the default setting. **Result: tuning did not improve the headline.** It raised validation macro-F1 by +0.069 on average, but on the test batches the mean change is -0.002
+(3 of 21 model/pipeline combinations improved, 11 got worse, 7 unchanged). The tuned SVM (scaling only) has the highest accuracy so far, 72.4% (default 70.5%), but a lower macro-F1, 67.0% (default 69.0%).
+Validation gains did not predict test gains (only AdaBoost, whose default is very weak, gained). Details: `notebooks/07_tuning.ipynb`.
+
 ### Limitations
 
-Untuned defaults; one fixed seed; several small, class-imbalanced test batches (4, 5, 8) and no confidence intervals or significance tests yet, so differences of a few points
+Untuned defaults in the first-review table; one fixed seed; several small, class-imbalanced test batches (4, 5, 8) and no confidence intervals or significance tests yet, so differences of a few points
 are within noise; the P1 training set contains almost no Toluene; this dataset copy has no raw baseline readings, so the Dennler et al. (2022) leakage concern was tested only indirectly.
 Rankings above are descriptive - choosing a final model from test-batch scores would be tuning on the test set.
 
@@ -76,11 +83,11 @@ Rankings above are descriptive - choosing a final model from test-batch scores w
 
 ```
 data/raw/        batch1.dat ... batch10.dat (git-ignored; see data/raw/README.md)
-src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, plotting.py
-notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results
-scripts/         run_stacking.py, run_random_baselines.py (heavy runs that cache their results)
-tests/           22 tests (chronological splits, no leakage, metrics, stacking folds)
-results/         CSV tables and results/figures/ (26 figures)
+src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, plotting.py
+notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning
+scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py (heavy runs that cache their results)
+tests/           30 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules)
+results/         CSV tables and results/figures/ (29 figures)
 docs/            first_review_slides.md (slide-by-slide outline for the review)
 ```
 
@@ -95,11 +102,11 @@ cd notebooks && jupyter nbconvert --to notebook --execute --inplace 01_eda_drift
 
 Run notebooks from inside `notebooks/` (they locate the project root from there). Notebooks 04-06 reuse the cached CSVs in `results/` and finish in seconds;
 to recompute from scratch set `RERUN = True` in the notebook, or run the scripts. Approximate full-recompute times on 16 CPU cores:
-notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
+notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
 
 ## 6. Roadmap (final phase)
 
-Hyperparameter tuning with validation inside the training batches; drift mitigation (sliding-window retraining, per-batch standardisation, recency weighting, an unlabeled-target method such as CORAL);
+Drift mitigation (sliding-window retraining, per-batch standardisation, recency weighting, an unlabeled-target method such as CORAL);
 sensor/feature-type interpretability; a redesigned stacker (forward-chaining folds); a Toluene-aware evaluation with per-gas reporting; bootstrap confidence intervals,
 Friedman/Nemenyi and McNemar tests; final report.
 

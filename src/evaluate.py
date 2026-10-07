@@ -101,8 +101,9 @@ def _batch_range(batches):
     return f"{min(batches)}-{max(batches)}" if len(batches) > 1 else f"{batches[0]}"
 
 
-def _fit_predict(estimator, variant, X_tr, y_tr, X_te, lda_components=5, random_state=42, pca_variance=0.95,
-                 groups_tr=None):
+def _fit_pipeline(estimator, variant, X_tr, y_tr, lda_components=5, random_state=42, pca_variance=0.95,
+                  groups_tr=None):
+    """Build the leak-free pipeline and fit it on the training data only."""
     pipe = make_pipeline(estimator, variant, pca_variance=pca_variance,
                          lda_components=lda_components, random_state=random_state)
     if variant == "LDA":  # LDA can give at most (n_classes_in_train - 1) axes
@@ -110,8 +111,11 @@ def _fit_predict(estimator, variant, X_tr, y_tr, X_te, lda_components=5, random_
     fit_params = {}
     if groups_tr is not None and "groups" in inspect.signature(pipe.named_steps["clf"].fit).parameters:
         fit_params["clf__groups"] = groups_tr    # e.g. stacking needs the batch of every training sample
-    pipe.fit(X_tr, y_tr, **fit_params)
-    return pipe.predict(X_te)
+    return pipe.fit(X_tr, y_tr, **fit_params)
+
+
+def _fit_predict(estimator, variant, X_tr, y_tr, X_te, groups_tr=None, **pipeline_kwargs):
+    return _fit_pipeline(estimator, variant, X_tr, y_tr, groups_tr=groups_tr, **pipeline_kwargs).predict(X_te)
 
 
 def _evaluate_split(estimator, X, y, batch, train_batches, test_batch, protocol, variant, name,
@@ -130,6 +134,29 @@ def _evaluate_split(estimator, X, y, batch, train_batches, test_batch, protocol,
     }
     cm = confusion_matrix(y[te], y_pred, labels=GAS_LABELS) if return_confusion else None
     return row, cm
+
+
+def evaluate_fixed_train(estimator, X, y, batch, train_batches, test_batches, variant="raw", name=None,
+                         protocol="P1", **pipeline_kwargs):
+    """Fit ONCE on ``train_batches`` and score each of ``test_batches`` separately.
+
+    Equivalent to :func:`evaluate_protocol` when the training set is the same for every test
+    batch (protocol P1), but without refitting the model for every test batch.
+    """
+    name = name or type(estimator).__name__
+    tr = np.isin(batch, train_batches)
+    assert max(train_batches) < min(test_batches), "a time-aware split must never train on the future"
+    pipe = _fit_pipeline(estimator, variant, X[tr], y[tr], groups_tr=batch[tr], **pipeline_kwargs)
+    rows = []
+    for tb in test_batches:
+        te = batch == tb
+        rows.append({
+            "model": name, "variant": variant, "protocol": protocol,
+            "train_batches": _batch_range(tuple(train_batches)), "test_batch": tb,
+            "n_train": int(tr.sum()), "n_test": int(te.sum()),
+            **compute_metrics(y[te], pipe.predict(X[te])),
+        })
+    return pd.DataFrame(rows)
 
 
 def evaluate_protocol(estimator, X, y, batch, protocol="P1", variant="raw", name=None,
