@@ -1,0 +1,3 @@
+comparison,diff,two-level 95% CI,P4 better on,verdict
+SVM raw: P4 minus P1 (B7-10),0.13353772714547968,"[-0.013, +0.279]",3/4,suggestive
+Random Forest raw: P4 minus P1 (B7-10),0.18067136341724943,"[+0.070, +0.328]",4/4,clear

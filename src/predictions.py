@@ -34,3 +34,10 @@ def rolling_stack_prediction(key, estimator, variant, X, y, batch, k):
     tr, te = batch < k, batch == k
     pipe = _fit_pipeline(estimator, variant, X[tr], y[tr], groups_tr=batch[tr])
     return key, k, pipe.predict(X[te]).astype(np.int8)
+
+
+def fixed_split_predictions(key, estimator, variant, X, y, batch, train_max, test_min):
+    """Fit once on batches <= ``train_max`` and predict the batches >= ``test_min`` (e.g. protocol P4: 6 and 7)."""
+    tr, te = batch <= train_max, batch >= test_min
+    pipe = _fit_pipeline(estimator, variant, X[tr], y[tr], groups_tr=batch[tr])
+    return key, pipe.predict(X[te]).astype(np.int8)

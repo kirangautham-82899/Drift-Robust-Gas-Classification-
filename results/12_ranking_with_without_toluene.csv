@@ -1,0 +1,4 @@
+protocol,Spearman rho (all gases vs gases 1-5),"best model, all gases","best model, gases 1-5"
+P1,1.0,SVM,SVM
+P3,0.9642857142857145,kNN,SVM
+P4,0.9642857142857145,SVM,SVM
