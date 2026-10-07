@@ -4,7 +4,7 @@
 Kiran Gautham (CB.AI.P2DSC26013)
 
 > **Status: first review done; final phase in progress.** The first-review results below use scikit-learn **default settings**.
-> Hyperparameter tuning is done (section 3b); drift-mitigation methods, interpretability, a redesigned stacker and significance tests are next.
+> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) are done; interpretability, a redesigned stacker and significance tests are next.
 
 ## 1. Problem
 
@@ -25,7 +25,7 @@ drift-aware classical-ML pipeline for gas classification, evaluated honestly: *t
   **P3** rolling: train on batches 1..k-1, test on batch k. Every test batch is scored separately.
 * **Metrics:** accuracy, macro-precision, macro-recall, **macro-F1** (main metric; averaged over the gases present in the test batch), confusion matrices.
 * **Leakage safety:** scaler/PCA/LDA are cloned and fitted on training batches only; stacking uses leave-one-batch-out folds; the random-split
-  results exist only as a clearly labelled "misleading" reference. 30 automated tests check these properties.
+  results exist only as a clearly labelled "misleading" reference. 44 automated tests check these properties.
 
 ## 3. Preliminary results (untuned)
 
@@ -71,7 +71,16 @@ Other protocols: rolling **P3** best is SVM (scaling only) with 82.4% accuracy /
 Settings were chosen on batches 1-3 only, with forward-chaining validation (train B1 / validate B2, train B1+B2 / validate B3), then tested on the untouched batches 4-10.
 Every grid contains the default setting. **Result: tuning did not improve the headline.** It raised validation macro-F1 by +0.069 on average, but on the test batches the mean change is -0.002
 (3 of 21 model/pipeline combinations improved, 11 got worse, 7 unchanged). The tuned SVM (scaling only) has the highest accuracy so far, 72.4% (default 70.5%), but a lower macro-F1, 67.0% (default 69.0%).
-Validation gains did not predict test gains (only AdaBoost, whose default is very weak, gained). Details: `notebooks/07_tuning.ipynb`.
+Validation gains did not predict test gains (only AdaBoost, whose default is very weak, gained). Details: `notebooks/07_tuning  08_drift_mitigation.ipynb`.
+
+### 3c. Drift mitigation (final phase, step 9)
+
+Four simple methods were tested with default-setting models, with their settings declared before running (window 2, half-life 2, CORAL regularisation 1.0): sliding-window retraining and recency weighting
+(need recent labels), per-batch standardisation and CORAL (need no labels, but use the unlabelled readings of the test batch; test labels are never used, and a test checks this).
+**Result: nothing beat simply retraining on all available history.** Under the rolling protocol P3 the mean change in macro-F1 relative to that baseline was -0.130 / -0.073 / -0.020 for windows of 1 / 2 / 3 batches,
+-0.004 for recency weighting (half-life 2), -0.074 for per-batch standardisation and -0.118 for CORAL (SVM with scaling only: baseline 79.7%, best mitigation 78.5%).
+Short windows are harmful mainly because several batches are tiny (161-470 samples). With the fixed training set P1 the two unlabelled-target methods gave mixed results (per-batch standardisation raised raw-feature Random Forest, Naive Bayes and kNN by 0.5-4.5 points
+but lowered SVM and every LDA pipeline); none beat the default SVM (69.0%). Details: `notebooks/08_drift_mitigation.ipynb`.
 
 ### Limitations
 
@@ -83,11 +92,11 @@ Rankings above are descriptive - choosing a final model from test-batch scores w
 
 ```
 data/raw/        batch1.dat ... batch10.dat (git-ignored; see data/raw/README.md)
-src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, plotting.py
+src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, plotting.py
 notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning
-scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py (heavy runs that cache their results)
-tests/           30 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules)
-results/         CSV tables and results/figures/ (29 figures)
+scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py (heavy runs that cache their results)
+tests/           44 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods)
+results/         CSV tables and results/figures/ (32 figures)
 docs/            first_review_slides.md (slide-by-slide outline for the review)
 ```
 
@@ -102,12 +111,11 @@ cd notebooks && jupyter nbconvert --to notebook --execute --inplace 01_eda_drift
 
 Run notebooks from inside `notebooks/` (they locate the project root from there). Notebooks 04-06 reuse the cached CSVs in `results/` and finish in seconds;
 to recompute from scratch set `RERUN = True` in the notebook, or run the scripts. Approximate full-recompute times on 16 CPU cores:
-notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
+notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
 
 ## 6. Roadmap (final phase)
 
-Drift mitigation (sliding-window retraining, per-batch standardisation, recency weighting, an unlabeled-target method such as CORAL);
-sensor/feature-type interpretability; a redesigned stacker (forward-chaining folds); a Toluene-aware evaluation with per-gas reporting; bootstrap confidence intervals,
+Gas-aware drift compensation (the simple methods of section 3c did not help); sensor/feature-type interpretability; a redesigned stacker (forward-chaining folds); a Toluene-aware evaluation with per-gas reporting; bootstrap confidence intervals,
 Friedman/Nemenyi and McNemar tests; final report.
 
 ## References

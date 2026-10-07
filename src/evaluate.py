@@ -60,16 +60,17 @@ def protocol_splits(protocol):
     raise ValueError(f"unknown protocol {protocol!r}; choose from {sorted(PROTOCOL_DESCRIPTIONS)}")
 
 
-def make_pipeline(estimator, variant="raw", pca_variance=0.95, lda_components=5, random_state=42):
+def make_pipeline(estimator, variant="raw", pca_variance=0.95, lda_components=5, random_state=42, scale=True):
     """Build ``StandardScaler -> [PCA | LDA] -> estimator``.
 
     ``variant``: ``"raw"`` (scaling only), ``"PCA"`` (keep ``pca_variance`` of the variance,
     a rule of thumb, not tuned) or ``"LDA"`` (up to ``lda_components`` discriminant axes;
-    5 is the maximum for 6 classes).
+    5 is the maximum for 6 classes). ``scale=False`` omits the scaler for data that were
+    standardised elsewhere (per-batch standardisation, CORAL).
     """
     if variant not in VARIANTS:
         raise ValueError(f"variant must be one of {VARIANTS}, got {variant!r}")
-    steps = [("scaler", StandardScaler())]
+    steps = [("scaler", StandardScaler())] if scale else []
     if variant == "PCA":
         steps.append(("dr", PCA(n_components=pca_variance, svd_solver="full", random_state=random_state)))
     elif variant == "LDA":
