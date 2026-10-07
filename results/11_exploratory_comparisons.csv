@@ -1,0 +1,6 @@
+comparison (exploratory),diff,two-level 95% CI,A>B,verdict
+P3 raw: random-CV stack vs SVM,0.025309817970843012,"[-0.013, +0.074]",5/9,suggestive
+P3 raw: random-CV stack vs Random Forest,0.04870257855645657,"[+0.005, +0.098]",6/9,clear
+P3 raw: random-CV stack vs kNN,0.05649865143764862,"[+0.025, +0.097]",8/9,clear
+P1 raw: random-CV stack vs SVM,-0.040230082984306643,"[-0.063, -0.016]",1/7,clear
+P1 PCA: random-CV stack vs SVM,0.0013609201130736967,"[-0.080, +0.068]",5/7,inconclusive

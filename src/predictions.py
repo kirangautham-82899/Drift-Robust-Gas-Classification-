@@ -27,3 +27,10 @@ def rolling_prediction(key, estimator, variant, method, X, y, batch, k):
     """One rolling-retraining split: train on batches 1..k-1 (then the method), predict batch k."""
     pred, _ = predict_mitigated(estimator, variant, X, y, batch, tuple(range(1, k)), k, METHODS[method])
     return key, k, pred.astype(np.int8)
+
+
+def rolling_stack_prediction(key, estimator, variant, X, y, batch, k):
+    """Rolling split for estimators that need the batch ids of the training samples (stacking): train on batches 1..k-1."""
+    tr, te = batch < k, batch == k
+    pipe = _fit_pipeline(estimator, variant, X[tr], y[tr], groups_tr=batch[tr])
+    return key, k, pipe.predict(X[te]).astype(np.int8)

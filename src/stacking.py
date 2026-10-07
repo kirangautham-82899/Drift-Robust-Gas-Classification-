@@ -58,8 +58,8 @@ class BatchStackingClassifier(ClassifierMixin, BaseEstimator):
     ----------
     estimators : list of ``(name, estimator)`` base models
     final_estimator : meta-learner (default ``LogisticRegression(max_iter=2000)``)
-    cv_strategy : ``"batch"`` (leave-one-batch-out, needs ``groups``) or ``"random"``
-        (stratified K-fold - the leaky ablation)
+    cv_strategy : ``"batch"`` (leave-one-batch-out, needs ``groups``), ``"forward"`` (forward chaining,
+        needs ``groups``) or ``"random"`` (stratified K-fold - the leaky ablation)
     """
 
     def __init__(self, estimators, final_estimator=None, cv_strategy="batch", n_splits=5, random_state=42, n_jobs=1):
@@ -71,11 +71,17 @@ class BatchStackingClassifier(ClassifierMixin, BaseEstimator):
         self.n_jobs = n_jobs
 
     def _splits(self, X, y, groups):
-        if self.cv_strategy not in ("batch", "random"):
-            raise ValueError("cv_strategy must be 'batch' or 'random'")
+        if self.cv_strategy not in ("batch", "random", "forward"):
+            raise ValueError("cv_strategy must be 'batch', 'random' or 'forward'")
         if self.cv_strategy == "batch" and groups is not None and len(np.unique(groups)) >= 2:
             self.cv_strategy_used_ = "batch"
             return list(LeaveOneGroupOut().split(X, y, groups))
+        if self.cv_strategy == "forward" and groups is not None and len(np.unique(groups)) >= 2:
+            # forward chaining: predict batch j with experts trained only on the batches BEFORE j (never the future);
+            # the oldest batch has no out-of-fold predictions and is not used to train the meta-learner
+            self.cv_strategy_used_ = "forward"
+            order = np.sort(np.unique(groups)); groups = np.asarray(groups)
+            return [(np.where(np.isin(groups, order[:j]))[0], np.where(groups == order[j])[0]) for j in range(1, len(order))]
         self.cv_strategy_used_ = "random"
         return list(StratifiedKFold(self.n_splits, shuffle=True, random_state=self.random_state).split(X, y))
 
@@ -89,12 +95,15 @@ class BatchStackingClassifier(ClassifierMixin, BaseEstimator):
         )
         meta = np.zeros((len(y), len(self.estimators) * len(self.classes_)))
         k = len(self.classes_)
+        covered = np.zeros(len(y), dtype=bool)
         for (i, _, _), (va, s) in zip(jobs, out):
             meta[va, i * k:(i + 1) * k] = s
+            covered[va] = True                       # every row for the partition strategies; not the oldest batch for 'forward'
         self.base_models_ = [(n, clone(e).fit(X, y)) for n, e in self.estimators]    # refit on all training data
         final = self.final_estimator if self.final_estimator is not None else LogisticRegression(max_iter=2000)
-        self.final_estimator_ = clone(final).fit(meta, y)
+        self.final_estimator_ = clone(final).fit(meta[covered], y[covered])
         self.n_folds_ = len(splits)
+        self.meta_rows_ = int(covered.sum())
         return self
 
     def _meta(self, X):
@@ -127,4 +136,20 @@ def make_stackers():
     return {
         "Stacking (batch CV)": BatchStackingClassifier(bases(), cv_strategy="batch"),
         "Stacking (random CV)": BatchStackingClassifier(bases(), cv_strategy="random"),
+    }
+
+
+BASE_NAMES_FAST = ["SVM", "kNN", "Random Forest", "Naive Bayes"]     # declared for the redesigned stacker: diverse and fast
+
+
+def make_fast_stackers():
+    """Four-expert stackers that differ ONLY in how the out-of-fold predictions are produced."""
+    from src.models import default_models
+    def bases():
+        dm = default_models()
+        return [(n, dm[n]) for n in BASE_NAMES_FAST]
+    return {
+        "Stack4 (forward)": BatchStackingClassifier(bases(), cv_strategy="forward"),
+        "Stack4 (batch CV)": BatchStackingClassifier(bases(), cv_strategy="batch"),
+        "Stack4 (random CV)": BatchStackingClassifier(bases(), cv_strategy="random"),
     }

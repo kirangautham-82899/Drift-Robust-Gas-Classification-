@@ -4,7 +4,7 @@
 Kiran Gautham (CB.AI.P2DSC26013)
 
 > **Status: first review done; final phase in progress.** The first-review results below use scikit-learn **default settings**.
-> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) and interpretability (section 3d) and significance tests (section 3e) are done; a redesigned stacker and the final report are next.
+> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) and interpretability (section 3d) and significance tests (section 3e) and a redesigned stacker (section 3f) are done; the Toluene-aware evaluation and the final report are next.
 
 ## 1. Problem
 
@@ -25,7 +25,7 @@ drift-aware classical-ML pipeline for gas classification, evaluated honestly: *t
   **P3** rolling: train on batches 1..k-1, test on batch k. Every test batch is scored separately.
 * **Metrics:** accuracy, macro-precision, macro-recall, **macro-F1** (main metric; averaged over the gases present in the test batch), confusion matrices.
 * **Leakage safety:** scaler/PCA/LDA are cloned and fitted on training batches only; stacking uses leave-one-batch-out folds; the random-split
-  results exist only as a clearly labelled "misleading" reference. 61 automated tests check these properties.
+  results exist only as a clearly labelled "misleading" reference. 66 automated tests check these properties.
 
 ## 3. Preliminary results (untuned)
 
@@ -59,7 +59,7 @@ Other protocols: rolling **P3** best is SVM (scaling only) with 82.4% accuracy /
    but Naive Bayes 82.8% to 20.2% and Random Forest 77.5% to 31.7%.
 4. **PCA/LDA have no universal effect.** They raise trees, Naive Bayes and boosting by up to 16 macro-F1 points on P1 but lower SVM; LDA is the least drift-robust on distant batches and collapses when trained on one batch.
 5. **Stacking did not help with default settings.** The leakage-safe stacker (54.0% macro-F1, scaling only) is below SVM; a diagnostic points to uneven out-of-fold predictions
-   (e.g. SVM only 53.7% accurate when batch 1 is held out). Forward-chaining folds are the next idea to test.
+   (e.g. SVM only 53.7% accurate when batch 1 is held out). A forward-chaining redesign was tested afterwards and did not help (section 3f).
 6. **Toluene is a hidden confound in P1.** Toluene is only 79 of 3,275 training samples (2.4%, 74 from batch 1), and no model recognises it on later batches
    (recall at most 12%). Excluding it from the average lifts SVM from 69.0% to 77.4% macro-F1, so part of the P1 penalty is data scarcity rather than drift.
    Drift remains real: SVM accuracy on non-Toluene samples is 51.7% on batch 10.
@@ -98,6 +98,14 @@ with a pre-declared verdict rule (clear / suggestive / inconclusive). **The best
 it from AdaBoost, Naive Bayes and Decision Tree; windows, CORAL and the leakage-safe default stacker clearly hurt; selecting features by training discriminability clearly hurts; tuning, per-batch standardisation, recency weighting and the Random Forest stable-half gain are only suggestive.
 **After Holm correction no single comparison is significant at 5%** (smallest adjusted p = 0.145), which is unavoidable with only 7 or 9 test batches. Details: `notebooks/10_significance.ipynb`.
 
+### 3f. Redesigned stacker with forward-chaining folds (final phase, step 11)
+
+Every out-of-fold prediction for batch *j* comes from experts trained only on earlier batches, which is what happens at deployment. Experts (declared in advance): SVM, kNN, Random Forest, Naive Bayes; the older fold designs were re-run with the same experts,
+and success was defined as beating leave-one-batch-out **and** the best single expert under both P1 and rolling retraining. **It did not work.** The forward stacker is no better than leave-one-batch-out (P1 raw -0.002; P1 LDA -0.152; rolling -0.065, the last two clear)
+and clearly below the best single expert (P1 raw 0.554 vs SVM 0.690; rolling 0.688 vs SVM 0.797). The first forward fold trains the experts on batch 1 alone (445 samples; SVM only 53.4% accurate), so the meta-learner learns from unrepresentatively weak experts,
+and, as in the tuning step, near-term validation does not predict which expert is best on distant batches. Random folds scored highest under rolling retraining (0.823 vs SVM 0.797), but not clearly better than SVM (exploratory, not pre-declared: 95% interval -0.013 to +0.074)
+and clearly worse on the fixed training set. **Overall: no stacker beat the best single model on both protocols.** Details: `notebooks/11_redesigned_stacker.ipynb`.
+
 ### Limitations
 
 Untuned defaults in the first-review table; one fixed seed; several small, class-imbalanced test batches (4, 5, 8) and no confidence intervals or significance tests yet, so differences of a few points
@@ -109,10 +117,10 @@ Rankings above are descriptive - choosing a final model from test-batch scores w
 ```
 data/raw/        batch1.dat ... batch10.dat (git-ignored; see data/raw/README.md)
 src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, interpret.py, predictions.py, stats.py, plotting.py
-notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability  10_significance
-scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py, run_predictions.py (heavy runs that cache their results)
-tests/           61 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability, statistics)
-results/         CSV tables and results/figures/ (39 figures)
+notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability  10_significance  11_redesigned_stacker
+scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py, run_predictions.py, run_stacker_redesign.py (heavy runs that cache their results)
+tests/           66 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability, statistics)
+results/         CSV tables and results/figures/ (42 figures)
 docs/            first_review_slides.md (slide-by-slide outline for the review)
 ```
 
@@ -127,11 +135,11 @@ cd notebooks && jupyter nbconvert --to notebook --execute --inplace 01_eda_drift
 
 Run notebooks from inside `notebooks/` (they locate the project root from there). Notebooks 04-06 reuse the cached CSVs in `results/` and finish in seconds;
 to recompute from scratch set `RERUN = True` in the notebook, or run the scripts. Approximate full-recompute times on 16 CPU cores:
-notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_interpretability.py` about 5 min, `scripts/run_predictions.py` about 13 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
+notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_interpretability.py` about 5 min, `scripts/run_predictions.py` about 13 min, `scripts/run_stacker_redesign.py` about 3 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
 
 ## 6. Roadmap (final phase)
 
-Gas-aware drift compensation (the simple methods of section 3c did not help); a redesigned stacker (forward-chaining folds); a Toluene-aware evaluation with per-gas reporting; final report.
+Gas-aware drift compensation (the simple methods of section 3c did not help); a Toluene-aware evaluation with per-gas reporting; final report.
 
 ## References
 

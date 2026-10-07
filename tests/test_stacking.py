@@ -87,3 +87,63 @@ def test_batch_ids_reach_the_stacker_through_the_pipeline():
     per_split = sorted([n1 + n2 + n3, n2 + n3, n1 + n3, n1 + n2])   # final refit + 3 leave-one-batch-out folds
     assert sorted(_Spy.sizes[:4]) == per_split
     assert len(_Spy.sizes) == 7 * 4
+
+
+# ---------------- forward chaining ----------------
+class _Rec(BaseEstimator, ClassifierMixin):
+    """Feature 0 is the batch id. Logs the newest batch seen while fitting and the oldest batch it is asked to predict."""
+    log = []
+
+    def fit(self, X, y):
+        _Rec.log.append(("fit", int(X[:, 0].max())))
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict_proba(self, X):
+        _Rec.log.append(("pred", int(X[:, 0].min())))
+        return np.full((len(X), len(self.classes_)), 1.0 / len(self.classes_))
+
+
+def _toy_with_batch_feature(sizes=(30, 40, 50), seed=0):
+    X, y, g = _toy(sizes, seed)
+    X = X.copy(); X[:, 0] = g
+    return X, y, g
+
+
+def test_forward_experts_never_see_the_batch_they_predict_or_any_later_one():
+    X, y, g = _toy_with_batch_feature()
+    _Rec.log = []
+    st = BatchStackingClassifier([("rec", _Rec())], cv_strategy="forward").fit(X, y, groups=g)
+    assert st.cv_strategy_used_ == "forward" and st.n_folds_ == 2
+    # fold 1: fit on batch 1 -> predict batch 2; fold 2: fit on batches 1-2 -> predict batch 3; then the final refit on all
+    assert _Rec.log == [("fit", 1), ("pred", 2), ("fit", 2), ("pred", 3), ("fit", 3)]
+    fits, preds = [v for k, v in _Rec.log if k == "fit"][:-1], [v for k, v in _Rec.log if k == "pred"]
+    assert all(f < p for f, p in zip(fits, preds))
+
+
+def test_forward_meta_learner_uses_only_rows_with_out_of_fold_predictions():
+    X, y, g = _toy_with_batch_feature()
+    st = BatchStackingClassifier([("knn", KNeighborsClassifier())], cv_strategy="forward").fit(X, y, groups=g)
+    assert st.meta_rows_ == 40 + 50                                   # the oldest batch (30 rows) has no out-of-fold prediction
+    assert BatchStackingClassifier([("knn", KNeighborsClassifier())], cv_strategy="batch").fit(X, y, groups=g).meta_rows_ == 120
+
+
+def test_forward_falls_back_to_random_folds_with_a_single_batch():
+    X, y, _ = _toy(sizes=(100,))
+    st = BatchStackingClassifier([("knn", KNeighborsClassifier())], cv_strategy="forward").fit(X, y, groups=np.ones(100))
+    assert st.cv_strategy_used_ == "random" and st.meta_rows_ == 100
+
+
+def test_forward_stacker_still_predicts_well_on_an_easy_problem():
+    X, y, g = _toy_with_batch_feature(sizes=(80, 80, 80), seed=1)
+    st = BatchStackingClassifier([("knn", KNeighborsClassifier()), ("lr", LogisticRegression(max_iter=500))], cv_strategy="forward").fit(X, y, groups=g)
+    assert (st.predict(X) == y).mean() > 0.6 and sum(st.base_weights().values()) == pytest.approx(1.0)
+
+
+@needs_data
+def test_forward_folds_through_the_evaluation_pipeline():
+    X, y, b = load_all()
+    _Spy.sizes = []
+    evaluate_protocol(BatchStackingClassifier([("spy", _Spy())], cv_strategy="forward"), X, y, b, "P1", "raw")
+    n1, n2, n3 = (int((b == k).sum()) for k in (1, 2, 3))
+    assert sorted(_Spy.sizes[:3]) == sorted([n1, n1 + n2, n1 + n2 + n3]) and len(_Spy.sizes) == 7 * 3
