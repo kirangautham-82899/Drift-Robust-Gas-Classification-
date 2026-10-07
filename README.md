@@ -71,7 +71,7 @@ Other protocols: rolling **P3** best is SVM (scaling only) with 82.4% accuracy /
 Settings were chosen on batches 1-3 only, with forward-chaining validation (train B1 / validate B2, train B1+B2 / validate B3), then tested on the untouched batches 4-10.
 Every grid contains the default setting. **Result: tuning did not improve the headline.** It raised validation macro-F1 by +0.069 on average, but on the test batches the mean change is -0.002
 (3 of 21 model/pipeline combinations improved, 11 got worse, 7 unchanged). The tuned SVM (scaling only) has the highest accuracy so far, 72.4% (default 70.5%), but a lower macro-F1, 67.0% (default 69.0%).
-Validation gains did not predict test gains (only AdaBoost, whose default is very weak, gained). Details: `notebooks/07_tuning  08_drift_mitigation.ipynb`.
+Validation gains did not predict test gains (only AdaBoost, whose default is very weak, gained). Details: `notebooks/07_tuning.ipynb`.
 
 ### 3c. Drift mitigation (final phase, step 9)
 
@@ -101,7 +101,7 @@ Rankings above are descriptive - choosing a final model from test-batch scores w
 ```
 data/raw/        batch1.dat ... batch10.dat (git-ignored; see data/raw/README.md)
 src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, interpret.py, plotting.py
-notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning
+notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability
 scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py (heavy runs that cache their results)
 tests/           52 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability)
 results/         CSV tables and results/figures/ (36 figures)
