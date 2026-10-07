@@ -1,0 +1,4 @@
+"comparison (exploratory, B4-10)",diff,ci2_lo,ci2_hi,A>B,verdict
+ensemble vs single SVM on the most recent batch,0.04129478952563202,-0.11649803202846588,0.20975778663512196,4/7,suggestive
+ensemble vs SVM retrained on all history,-0.14907334166504546,-0.23463599941008068,-0.0680636698955198,0/7,clear
+accuracy weights vs equal weights,0.1284622748918994,0.020042053143423673,0.24236148744468183,6/7,clear

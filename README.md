@@ -4,7 +4,7 @@
 Kiran Gautham (CB.AI.P2DSC26013)
 
 > **Status: first review done; final phase in progress.** The first-review results below use scikit-learn **default settings**.
-> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) and interpretability (section 3d) and significance tests (section 3e) a redesigned stacker (section 3f) and a Toluene-aware evaluation (section 3g) are done; only the final report is left.
+> Hyperparameter tuning (section 3b) and drift mitigation (section 3c) and interpretability (section 3d) and significance tests (section 3e) a redesigned stacker (section 3f) and a Toluene-aware evaluation (section 3g) and a literature anchor (section 3h) are done; only the final report is left.
 
 ## 1. Problem
 
@@ -25,7 +25,7 @@ drift-aware classical-ML pipeline for gas classification, evaluated honestly: *t
   **P3** rolling: train on batches 1..k-1, test on batch k. Every test batch is scored separately.
 * **Metrics:** accuracy, macro-precision, macro-recall, **macro-F1** (main metric; averaged over the gases present in the test batch), confusion matrices.
 * **Leakage safety:** scaler/PCA/LDA are cloned and fitted on training batches only; stacking uses leave-one-batch-out folds; the random-split
-  results exist only as a clearly labelled "misleading" reference. 70 automated tests check these properties.
+  results exist only as a clearly labelled "misleading" reference. 76 automated tests check these properties.
 
 ## 3. Preliminary results (untuned)
 
@@ -114,6 +114,13 @@ Ignoring Toluene does **not** change the model ranking (Spearman 1.00 / 0.96), s
 A learning curve shows that **a small representative recent sample of all gases beats collecting only the missing gas**: adding Toluene-only samples from batch 6 lifts SVM Toluene recall to 0.72 but leaves overall macro-F1 flat (0.587 to 0.595)
 and lowers the other gases (macro-F1 over gases 1-5: 0.704 to 0.640), whereas 200 random recent samples lift the SVM macro-F1 to 0.669. Details: `notebooks/12_toluene_aware.ipynb`.
 
+### 3h. Literature anchor: the classifier ensemble of the dataset paper (final phase, step 14)
+
+We re-implemented, in the spirit of Vergara et al. (2012) (from a secondary description, not a replication of the paper's numbers), one default SVM per batch, weighted by accuracy on the most recent labelled batch, and tested it under rolling retraining.
+**Weighting by recent performance is what makes the ensemble work** (+0.100 macro-F1 over equal weights, 95% interval +0.015 to +0.201), and against a single SVM trained on the most recent batch it is level (-0.027, interval -0.201 to +0.141),
+but **retraining one SVM on all older batches clearly beats it** (0.797 vs 0.625 macro-F1; worse on all 9 test batches). In this benchmark pooling all labelled history is the strongest simple strategy; ensembles of per-period classifiers only help against weaker single-period baselines.
+Trained on batch 1 alone, the SVM's accuracy falls from 0.762 on batch 2 to 0.239 on batch 5. Details: `notebooks/13_literature_anchor.ipynb`.
+
 ### Limitations
 
 Untuned defaults in the first-review table; one fixed seed; several small, class-imbalanced test batches (4, 5, 8) and no confidence intervals or significance tests yet, so differences of a few points
@@ -124,11 +131,11 @@ Rankings above are descriptive - choosing a final model from test-batch scores w
 
 ```
 data/raw/        batch1.dat ... batch10.dat (git-ignored; see data/raw/README.md)
-src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, interpret.py, predictions.py, stats.py, toluene.py, plotting.py
-notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability  10_significance  11_redesigned_stacker  12_toluene_aware
-scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py, run_predictions.py, run_stacker_redesign.py, run_toluene.py (heavy runs that cache their results)
-tests/           70 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability, statistics, Toluene-aware evaluation)
-results/         CSV tables and results/figures/ (45 figures)
+src/             data.py (loader), evaluate.py (protocols, metrics), models.py, stacking.py, tuning.py, mitigation.py, interpret.py, predictions.py, stats.py, toluene.py, ensemble.py, plotting.py
+notebooks/       01_eda_drift  02_evaluation_framework  03_pca_lda  04_baselines  05_stacking  06_results  07_tuning  08_drift_mitigation  09_interpretability  10_significance  11_redesigned_stacker  12_toluene_aware  13_literature_anchor
+scripts/         run_stacking.py, run_random_baselines.py, run_tuning.py, run_mitigation.py, run_interpretability.py, run_predictions.py, run_stacker_redesign.py, run_toluene.py, run_ensemble.py (heavy runs that cache their results)
+tests/           76 tests (chronological splits, no leakage, metrics, stacking folds, tuning rules, mitigation methods, interpretability, statistics, Toluene-aware evaluation, ensemble)
+results/         CSV tables and results/figures/ (46 figures)
 docs/            first_review_slides.md (slide-by-slide outline for the review)
 ```
 
@@ -143,7 +150,7 @@ cd notebooks && jupyter nbconvert --to notebook --execute --inplace 01_eda_drift
 
 Run notebooks from inside `notebooks/` (they locate the project root from there). Notebooks 04-06 reuse the cached CSVs in `results/` and finish in seconds;
 to recompute from scratch set `RERUN = True` in the notebook, or run the scripts. Approximate full-recompute times on 16 CPU cores:
-notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_interpretability.py` about 5 min, `scripts/run_predictions.py` about 13 min, `scripts/run_stacker_redesign.py` about 3 min, `scripts/run_toluene.py` about 5 min, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
+notebook 04 about 28 min, `scripts/run_stacking.py` about 23 min, `scripts/run_tuning.py` about 14 min, `scripts/run_mitigation.py` about 2 min, `scripts/run_interpretability.py` about 5 min, `scripts/run_predictions.py` about 13 min, `scripts/run_stacker_redesign.py` about 3 min, `scripts/run_toluene.py` about 5 min, `scripts/run_ensemble.py` about 15 s, `scripts/run_random_baselines.py` about 7 min; everything else takes under a minute.
 
 ## 6. Roadmap (final phase)
 

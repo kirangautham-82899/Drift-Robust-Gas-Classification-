@@ -1,0 +1,5 @@
+comparison,diff,ci2_lo,ci2_hi,A>B,p,verdict
+ensemble vs single SVM on the most recent batch,-0.027101642694666615,-0.20056179057286666,0.1407448001589404,4/9,0.84375,suggestive
+ensemble vs SVM retrained on all history,-0.17290509696707376,-0.28091243345822214,-0.07313006762886827,0/9,0.0078125,clear
+accuracy weights vs equal weights,0.09991510269369955,0.015455197149878926,0.20117213416276453,6/9,0.078125,clear
+equal-weight ensemble vs single SVM on the most recent batch,-0.12701674538836613,-0.3155746457007273,0.04078313198412308,3/9,0.3125,suggestive
